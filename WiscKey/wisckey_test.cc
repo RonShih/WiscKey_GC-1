@@ -320,6 +320,10 @@ static void datainsert(WK *wk,std::string &key,std::string &value,std::string &a
   	clock_t dt = clock() - t0;
   	cout << "time elapsed: " << dt * 1.0e-6 << " seconds" << endl;
 }
+void reopenlogfile(WK * wk){
+	fclose(wk->logfile);
+  	wk->logfile = fopen("logfile","wb+");
+}
 int main(int argc, char ** argv)
 {
 	if (argc < 2) {
@@ -355,8 +359,7 @@ int main(int argc, char ** argv)
   	這裡是測試
   	*/
   	/*Without reopen, it will cause segamentation fault*/
-  	fclose(wk->logfile);
-  	wk->logfile = fopen("logfile","wb+");
+  	reopenlogfile(wk);
   	datainsert(wk,testkey,testvalue,accvalue);
         close_wisckey(wk);
         destroy_leveldb("wisckey_test_dir");       
