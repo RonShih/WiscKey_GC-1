@@ -335,11 +335,12 @@ int main(int argc, char ** argv)
   	std::string testkey;
   	std::string testvalue;
   	std::string accvalue;
-  	std::string compkey;
-  	std::string compvalue;
-  	std::string compaccvalue;
+
   	WK * wk = open_wisckey("wisckey_test_dir");
   	head_tail_insert(wk,testkey,testvalue);
+	
+
+  	
   	if (wk == NULL) {
     		cerr << "Open WiscKey failed!" << endl;
     		exit(1);
@@ -349,12 +350,15 @@ int main(int argc, char ** argv)
   	這裡是測試get set delete 都OK
   	*/
 
-  	//testing_compaction(wk,testkey,testvalue,accvalue);
+  	testing_compaction(wk,testkey,testvalue,accvalue);
   	/*
   	這裡是測試
   	*/
+  	/*Without reopen, it will cause segamentation fault*/
+  	fclose(wk->logfile);
+  	wk->logfile = fopen("logfile","wb+");
   	datainsert(wk,testkey,testvalue,accvalue);
-        //close_wisckey(wk);
+        close_wisckey(wk);
         destroy_leveldb("wisckey_test_dir");       
         remove("logfile");
         exit(0);
