@@ -1,0 +1,20 @@
+BEYONDADDR		ART(R:us)		ART(W:us)		ART(RW:us)		(WT:ns)
+BEYONDADDR		2759		1684		2465 
+----------------------------------------- 
+FreeBlock 1406. 
+Total Write 1893740 (Failed 0). 
+Total Read 5020128 (Failed 2550038). 
+Total Operations 6913868. 
+----------------------------------------- 
+TotalBlockEraseCount 0. 
+TotalLivePageCopyings 0. 
+----------------------------------------- 
+TotalWritePageCount 1308705. 
+TotalReadPageCount 6666620. 
+----------------------------------------- 
+TotalWriteSubPageCount 41878447. 
+TotalReadSubPageCount 107679634. 
+TotalLiveSubPageCopyings 0. 
+----------------------------------------- 
+TotalWriteRequestTime 3190661298000. 
+TotalReadRequestTime 13852436365600. 

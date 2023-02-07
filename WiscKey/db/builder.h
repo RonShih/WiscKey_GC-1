@@ -6,7 +6,8 @@
 #define STORAGE_LEVELDB_DB_BUILDER_H_
 
 #include "leveldb/status.h"
-
+#include "iostream"
+#include "vector"
 namespace leveldb {
 
 struct Options;
@@ -28,7 +29,6 @@ extern Status BuildTable(const std::string& dbname,
                          TableCache* table_cache,
                          Iterator* iter,
                          FileMetaData* meta);
-
 }  // namespace leveldb
 
 #endif  // STORAGE_LEVELDB_DB_BUILDER_H_

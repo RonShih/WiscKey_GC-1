@@ -1,0 +1,20 @@
+DFTL		ART(R:us)		ART(W:us)		ART(RW:us)		(WT:ns)
+DFTL		4514		37948		27552 
+----------------------------------------- 
+FreeBlock 64. 
+Total Write 16662134 (Failed 0). 
+Total Read 7518240 (Failed 624278). 
+Total Operations 24180374. 
+----------------------------------------- 
+TotalBlockEraseCount 617575. 
+TotalLivePageCopyings 121412086. 
+----------------------------------------- 
+TotalWritePageCount 33774414. 
+TotalReadPageCount 16332876. 
+----------------------------------------- 
+TotalWriteSubPageCount 0. 
+TotalReadSubPageCount 0. 
+TotalLiveSubPageCopyings 0. 
+----------------------------------------- 
+TotalWriteRequestTime 632300177377680. 
+TotalReadRequestTime 33937756382880. 

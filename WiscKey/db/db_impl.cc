@@ -32,13 +32,76 @@
 #include "util/coding.h"
 #include "util/logging.h"
 #include "util/mutexlock.h"
+#include "util/map.h"
+
+
 #include "global.h"
+#include "Flash/typedefine.h"
+#include "Flash/main.h"
+#include "Flash/flash.h"
+#include "Flash/FTL.h"
+#include "lab2_common.h"
 
-#ifndef GLOBAL_h
-#define GLOBAL_h
+#include "map"
+
+
+using namespace std;
+/*
+class KeySSTableMapClass
+{
+public:
+	KeySSTableMapClass(unsigned long long i)
+	{
+		SSTableNum = i;
+	}
+
+	~KeySSTableMapClass()
+	{
+
+	}
+	unsigned long long getSSTableNum(){
+		return SSTableNum;
+	}
+private:
+	unsigned long long SSTableNum;
+};
+class SSTableClusterMapClass
+{
+public:
+	SSTableClusterMapClass(vector<unsigned long long> i)
+	{
+		Cluster = i;
+	}
+
+	~SSTableClusterMapClass()
+	{
+
+	}
+	vector<unsigned long long> getCluster(){
+		return Cluster;
+	}
+private:
+	vector<unsigned long long> Cluster;//0 start loc 1 len
+};*/
+typedef struct Operation{
+	AccessType_t AccessType;
+	flash_size_t StartCluster;
+	flash_size_t Length;
+};
+
+
 bool compacted = false;
-#endif
+static map<string, unsigned long long> KeySSTableMap; // Key:store key  Value:Clusterrange;
+static map<unsigned long long,vector<flash_size_t>> SSTableClusterMap;
 
+
+vector<Operation> Operations;
+std::mutex Table_mutex;
+std::mutex FTL_mutex;
+
+static int keycount=0;
+//static util::map<const char *, KeySSTableMapClass*> KeySSTableMap;
+//static util::map<unsigned long long, SSTableClusterMapClass*> SSTableClusterMap;
 namespace leveldb {
 
 const int kNumNonTableCacheFiles = 10;
@@ -54,6 +117,7 @@ int tail = 0;
 int GC = 0;
 
 bool wisckey;
+/*
 	void
 inleveldb_set(DB * db, std::string &key, std::string &value)
 {
@@ -76,6 +140,7 @@ inleveldb_get(DB * db, std::string &key, std::string &value)
     return true;
   }
 }
+
 void logfile_GC_simulation(std::string &accvalue,std::string &key,std::string &value){
 	int goal = 256*1024;// a chunk of logfile too big will crash
 	int i=0,length = 32;
@@ -126,7 +191,7 @@ void logfile_GC_simulation(std::string &accvalue,std::string &key,std::string &v
 	  	}
 	  	
 	}
-}
+}*/
 
 // Information kept for every waiting writer
 struct DBImpl::Writer {
@@ -147,7 +212,7 @@ struct DBImpl::CompactionState {
   // Therefore if we have seen a sequence number S <= smallest_snapshot,
   // we can drop all entries for the same key with sequence numbers < S.
   SequenceNumber smallest_snapshot;
-
+  vector<vector<string>> keyvalues;//to record the rewrite key value 0:key 1:value by Hsu
   // Files produced by compaction
   struct Output {
     uint64_t number;
@@ -591,13 +656,66 @@ Status DBImpl::WriteLevel0Table(MemTable* mem, VersionEdit* edit,
   {
     mutex_.Unlock();
     s = BuildTable(dbname_, env_, options_, table_cache_, iter, &meta);
+    //go to updatae Cluster map
+      //dump SSTable to level0 write in flash mem
     mutex_.Lock();
+    
+    //search SSTable and record KeySSTableMap by Hsu
+    iter->SeekToFirst();
+    //vector<string> keysnow;
+    if (iter->Valid()) {
+    for (; iter->Valid(); iter->Next()) {
+      Slice key = iter->key();
+      Slice value = iter->value();
+  	string t = key.data(),v = value.data();
+  	v = v.substr(0,value.size());
+  	t = t.substr(0,strlen(t.c_str())-4);
+
+  	//string keyinfo = t.substr(strlen(t.c_str())-4,4);
+
+  	Table_mutex.lock();
+	KeySSTableMap[t] = meta.number;
+  	Table_mutex.unlock();
+  	
+      }
+    }
+    //record SSTable and Cluster information by Hsu
+    FTL_mutex.lock();
+    flash_size_t StartCluster = CurrentCluster;
+    CurrentCluster += (flash_size_t)meta.file_size/PageSize;
+    FTL_mutex.unlock();
+    
+    Operation op;
+    op.AccessType = WriteType;
+    op.StartCluster = StartCluster;
+    op.Length = (flash_size_t)meta.file_size/PageSize;
+    vector<flash_size_t> temp = {op.StartCluster,op.Length};
+    FTL_mutex.lock();
+    {
+	    SSTableClusterMap[meta.number] = temp;
+	    Operations.push_back(op);
+    }
+    FTL_mutex.unlock();
+
+    
   }
 
   Log(options_.info_log, "Level-0 table #%llu: %lld bytes %s",
       (unsigned long long) meta.number,
       (unsigned long long) meta.file_size,
       s.ToString().c_str());
+
+  /*
+  for(int i = 0;i<keysnow.size();i++){
+  	//assign key to key cluster map
+  	vector<unsigned long long>temp = {CurrentCluster,meta.file_size/PageSize};
+  	string t = keysnow[i].data();
+  	t = t.substr(0,strlen(t.c_str())-4);
+  	KeySSTableMap[t] = meta.number;
+  	SSTableClusterMap[meta.number] = temp;
+  }
+  WritewithFTL(WriteType,(flash_size_t) meta.file_size/PageSize);
+  */
   delete iter;
   pending_outputs_.erase(meta.number);
 
@@ -618,6 +736,7 @@ Status DBImpl::WriteLevel0Table(MemTable* mem, VersionEdit* edit,
   CompactionStats stats;
   stats.micros = env_->NowMicros() - start_micros;
   stats.bytes_written = meta.file_size;
+  
   stats_[level].Add(stats);
   return s;
 }
@@ -753,12 +872,6 @@ void DBImpl::MaybeScheduleCompaction() {
 
 void DBImpl::BGWork(void* db) {
   reinterpret_cast<DBImpl*>(db)->BackgroundCall();
-  if(wisckey){
-    //std::string key = "GCkey",value  = "",accvalue ;
-    //logfile_GC_simulation(accvalue,key,value);
-    compacted = true;
-  }
-
 }
 
 void DBImpl::BackgroundCall() {
@@ -778,6 +891,7 @@ void DBImpl::BackgroundCall() {
   // so reschedule another compaction if needed.
   MaybeScheduleCompaction();
   bg_cv_.SignalAll();
+
 }
 
 void DBImpl::BackgroundCompaction() {
@@ -785,7 +899,11 @@ void DBImpl::BackgroundCompaction() {
   
   if (imm_ != NULL) {
     CompactMemTable();
-    
+    if(wisckey){
+    //std::string key = "GCkey",value  = "",accvalue ;
+    //logfile_GC_simulation(accvalue,key,value);
+    compacted = true;
+    }
     return;
   }
 
@@ -844,6 +962,11 @@ void DBImpl::BackgroundCompaction() {
   
   if (status.ok()) {
     // Done
+    if(wisckey){
+    //std::string key = "GCkey",value  = "",accvalue ;
+    //logfile_GC_simulation(accvalue,key,value);
+    compacted = true;
+    }
   } else if (shutting_down_.Acquire_Load()) {
     // Ignore compaction errors found during shutting down
   } else {
@@ -864,6 +987,7 @@ void DBImpl::BackgroundCompaction() {
     }
     manual_compaction_ = NULL;
   }
+
 }
 
 void DBImpl::CleanupCompaction(CompactionState* compact) {
@@ -928,6 +1052,7 @@ Status DBImpl::FinishCompactionOutputFile(CompactionState* compact,
   const uint64_t current_bytes = compact->builder->FileSize();
   compact->current_output()->file_size = current_bytes;
   compact->total_bytes += current_bytes;
+  
   delete compact->builder;
   compact->builder = NULL;
 
@@ -956,10 +1081,50 @@ Status DBImpl::FinishCompactionOutputFile(CompactionState* compact,
           (unsigned long long) current_entries,
           (unsigned long long) current_bytes);
     }
+    
+    //record KeySSTableMap information by Hsu
+    int n = compact->keyvalues.size();
+    for(int i=0;i<n;i++){
+  	string tmp = compact->keyvalues[i][0];
+  	string v = compact->keyvalues[i][1];
+
+  	//segmentation fault for map use
+  	Table_mutex.lock();
+  	KeySSTableMap[tmp] = output_number;
+  	Table_mutex.unlock();
+    }
+    //record SSTableClusterMap information by Hsu
+    FTL_mutex.lock();
+    flash_size_t StartCluster = CurrentCluster;
+    CurrentCluster += (flash_size_t)current_bytes/PageSize;
+    FTL_mutex.unlock();
+    Operation op;
+    op.AccessType = WriteType;
+    op.StartCluster = StartCluster;
+    op.Length = (flash_size_t)current_bytes/PageSize;
+    vector<flash_size_t> temp = {op.StartCluster,op.Length};
+    FTL_mutex.lock();
+    {
+	    SSTableClusterMap[output_number] = temp;
+	    Operations.push_back(op);
+	    
+    }
+    FTL_mutex.unlock();
+    compact->keyvalues.clear();
+    /*
+    for(int i = 0;i<keysnow.size();i++){
+  	//assign key to key cluster map
+  	vector<unsigned long long>temp = {CurrentCluster,current_bytes/PageSize};
+  	string t = keysnow[i];
+  	t = t.substr(0,strlen(t.c_str())-4);
+  	KeySSTableMap[t] = output_number;
+  	SSTableClusterMap[output_number] = temp;
+    }
+    WritewithFTL(WriteType,(flash_size_t) current_bytes/PageSize);
+    */
   }
   return s;
 }
-
 
 Status DBImpl::InstallCompactionResults(CompactionState* compact) {
   mutex_.AssertHeld();
@@ -973,6 +1138,7 @@ Status DBImpl::InstallCompactionResults(CompactionState* compact) {
   // Add compaction outputs
   compact->compaction->AddInputDeletions(compact->compaction->edit());
   const int level = compact->compaction->level();
+  
   for (size_t i = 0; i < compact->outputs.size(); i++) {
     const CompactionState::Output& out = compact->outputs[i];
     compact->compaction->edit()->AddFile(
@@ -983,6 +1149,8 @@ Status DBImpl::InstallCompactionResults(CompactionState* compact) {
 }
 
 Status DBImpl::DoCompactionWork(CompactionState* compact) {
+  
+  
   const uint64_t start_micros = env_->NowMicros();
   int64_t imm_micros = 0;  // Micros spent doing imm_ compactions
 
@@ -1011,6 +1179,7 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
   std::string current_user_key;
   bool has_current_user_key = false;
   SequenceNumber last_sequence_for_key = kMaxSequenceNumber;
+  
   for (; input->Valid() && !shutting_down_.Acquire_Load(); ) {
     // Prioritize immutable compaction work
     if (has_imm_.NoBarrier_Load() != NULL) {
@@ -1046,6 +1215,7 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
                                      Slice(current_user_key)) != 0) {
         // First occurrence of this user key
         current_user_key.assign(ikey.user_key.data(), ikey.user_key.size());
+        
         has_current_user_key = true;
         last_sequence_for_key = kMaxSequenceNumber;
       }
@@ -1091,11 +1261,13 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
       }
       compact->current_output()->largest.DecodeFrom(key);
       compact->builder->Add(key, input->value());
-
+      vector<string> KVpair = {current_user_key,input->value().data()};
+      KVpair[1] = KVpair[1].substr(0,input->value().size());
+      compact->keyvalues.push_back(KVpair);//record key in a batch
       // Close output file if it is big enough
       if (compact->builder->FileSize() >=
           compact->compaction->MaxOutputFileSize()) {
-        status = FinishCompactionOutputFile(compact, input);
+        status = FinishCompactionOutputFile(compact, input);	
         if (!status.ok()) {
           break;
         }
@@ -1207,6 +1379,7 @@ int64_t DBImpl::TEST_MaxNextLevelOverlappingBytes() {
 Status DBImpl::Get(const ReadOptions& options,
                    const Slice& key,
                    std::string* value) {
+
   Status s;
   MutexLock l(&mutex_);
   SequenceNumber snapshot;
@@ -1248,6 +1421,43 @@ Status DBImpl::Get(const ReadOptions& options,
   mem->Unref();
   if (imm != NULL) imm->Unref();
   current->Unref();
+  
+	/*
+  KeySSTableMapClass *lRet = NULL;
+  SSTableClusterMapClass *Ret = NULL;
+  string t= key.data();
+  
+  bool ret = KeySSTableMap.lookup(t.c_str(), lRet);
+  if(ret){
+  	printf("%llu\n",lRet->getSSTableNum());
+  	ret = SSTableClusterMap.lookup(lRet->getSSTableNum(), Ret);
+  	printf("from %llu to %llu \n",Ret->getCluster()[0],Ret->getCluster()[1]);
+  }
+  */
+  
+  //find correspond secion of flash memory by Hsu
+  string t = key.data();
+  
+  Table_mutex.lock();
+  unsigned long long SSTableNum = KeySSTableMap[t];
+  Table_mutex.unlock();
+  
+  if(SSTableNum!=0){
+    FTL_mutex.lock();
+    {	    
+	    vector<flash_size_t> temp = SSTableClusterMap[SSTableNum];
+    	    {
+    	    	flash_size_t StartCluster = temp[0];
+    	    	Operation op;
+		op.AccessType = ReadType;
+		op.StartCluster = StartCluster;
+		op.Length = temp[1];
+		Operations.push_back(op);
+    	    }
+    }
+    FTL_mutex.unlock();
+  }
+  
   return s;
 }
 
@@ -1284,6 +1494,8 @@ void DBImpl::ReleaseSnapshot(const Snapshot* s) {
 Status DBImpl::Put(const WriteOptions& o, const Slice& key, const Slice& val) {
   return DB::Put(o, key, val);
 }
+
+// MODIFIED
 
 Status DBImpl::Delete(const WriteOptions& options, const Slice& key) {
   return DB::Delete(options, key);
@@ -1569,6 +1781,22 @@ void DBImpl::GetApproximateSizes(
   }
 }
 
+/*MODIFIED
+Status DB::Put(const WriteOptions& opt, const Slice& key, const Slice& value) {
+  WriteBatch batch;
+    //In levelDB, getfunction is disable.
+    //So, I use this function to update head and tail.
+
+  if(key.data()==headkey){
+  	head = std::atoi(value.data());
+  }else if(key.data()==tailkey){
+  	tail = std::atoi(value.data());
+  }
+  batch.Put(key, value);
+  return Write(opt, &batch);
+}
+*/
+
 // Default implementations of convenience methods that subclasses of DB
 // can call if they wish
 Status DB::Put(const WriteOptions& opt, const Slice& key, const Slice& value) {
@@ -1576,6 +1804,7 @@ Status DB::Put(const WriteOptions& opt, const Slice& key, const Slice& value) {
   /*In levelDB, getfunction is disable.
     So, I use this function to update head and tail.
   */
+
   if(key.data()==headkey){
   	head = std::atoi(value.data());
   }else if(key.data()==tailkey){
@@ -1634,6 +1863,7 @@ Status DB::Open(const Options& options, const std::string& dbname,
   } else {
     delete impl;
   }
+
   return s;
 }
 

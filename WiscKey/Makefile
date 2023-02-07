@@ -45,7 +45,9 @@ TESTS = \
 	util/coding_test \
 	util/crc32c_test \
 	util/env_test \
-	util/hash_test
+	util/hash_test\
+	Flash/flash\
+	Flash/FTL
 
 UTILS = \
 	db/db_bench \
@@ -59,8 +61,8 @@ BENCHMARKS = \
 	doc/bench/db_bench_sqlite3 \
 	doc/bench/db_bench_tree_db
 
-CFLAGS += -I. -I./include $(PLATFORM_CCFLAGS) $(OPT)
-CXXFLAGS += -I. -I./include $(PLATFORM_CXXFLAGS) $(OPT)
+CFLAGS += -I. -I./include $(PLATFORM_CCFLAGS) $(OPT) -g
+CXXFLAGS += -I. -I./include $(PLATFORM_CXXFLAGS) $(OPT) -g
 
 LDFLAGS += $(PLATFORM_LDFLAGS)
 LIBS += $(PLATFORM_LIBS)
@@ -165,15 +167,16 @@ $(STATIC_OUTDIR)/table: | $(STATIC_OUTDIR)
 
 $(STATIC_OUTDIR)/util: | $(STATIC_OUTDIR)
 	mkdir $@
-
+$(STATIC_OUTDIR)/Flash: | $(STATIC_OUTDIR)
+	mkdir $@
 .PHONY: STATIC_OBJDIRS
 STATIC_OBJDIRS: \
 	$(STATIC_OUTDIR)/db \
 	$(STATIC_OUTDIR)/port \
 	$(STATIC_OUTDIR)/table \
 	$(STATIC_OUTDIR)/util \
-	$(STATIC_OUTDIR)/helpers/memenv
-
+	$(STATIC_OUTDIR)/helpers/memenv\
+	$(STATIC_OUTDIR)/Flash
 $(SHARED_OUTDIR):
 	mkdir $@
 
@@ -191,14 +194,16 @@ $(SHARED_OUTDIR)/table: | $(SHARED_OUTDIR)
 
 $(SHARED_OUTDIR)/util: | $(SHARED_OUTDIR)
 	mkdir $@
-
+$(SHARED_OUTDIR)/Flash: | $(SHARED_OUTDIR)
+	mkdir $@
 .PHONY: SHARED_OBJDIRS
 SHARED_OBJDIRS: \
 	$(SHARED_OUTDIR)/db \
 	$(SHARED_OUTDIR)/port \
 	$(SHARED_OUTDIR)/table \
 	$(SHARED_OUTDIR)/util \
-	$(SHARED_OUTDIR)/helpers/memenv
+	$(SHARED_OUTDIR)/helpers/memenv\
+	$(SHARED_OUTDIR)/Flash
 
 $(DEVICE_OUTDIR):
 	mkdir $@

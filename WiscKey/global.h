@@ -1,23 +1,23 @@
-#include <fstream>
-#include "leveldb/db.h"
-#include "db/db_impl.h"
-#include "leveldb/filter_policy.h"
-#include "leveldb/write_batch.h"
-
-
+#include<iostream>
+#include <map>
+#include <vector>
+#include "Flash/typedefine.h"
+#include "Flash/main.h"
+#include "Flash/flash.h"
+#include "Flash/FTL.h"
+#include <mutex>
+#ifndef GLOBAL_H
+#define GLOBAL_H
 
 using leveldb::DB;
-
-#ifndef Global_logfile
-#define Global_logfile
-extern FILE *logfile;
-#endif
-#ifndef Global_file_spinlock
-#define Global_file_spinlock
-extern bool file_spinlock;
-#endif
-
-#ifndef Global_db
-#define Global_db
-extern DB *db;
+using namespace std;
+extern bool compacted;
+typedef struct Operation{
+	AccessType_t AccessType;
+	flash_size_t StartCluster;
+	flash_size_t Length;
+};
+extern vector<Operation> Operations;
+extern std::mutex Table_mutex;
+extern std::mutex FTL_mutex;
 #endif
